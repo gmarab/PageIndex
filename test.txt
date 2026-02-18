@@ -1,0 +1,29 @@
+carica file diretto:
+uv run run_pageindex.py --pdf_path "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf" --model "gpt-oss:20b-cloud"
+
+
+API:
+
+attiva server:
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+invia documento da remoto:
+curl -X POST -F "file=@/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf" http://localhost:8000/upload
+
+oppure elabora documento locale:
+curl "http://localhost:8000/process?path="/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf"
+
+
+ricerca:
+
+curl "http://localhost:8000/answer?ID=b39c6db54ac047698b1e78b68f313ed9&question="Are any direct clinical benefits claimed for this software?"&model="gemma3"
+
+
+curl "http://localhost:8000/answer/{file_id}?question=What is the revenue?"
+
+
+curl "http://localhost:8000/answer/{1f613ead681e452e81e63ba8ddde8fd8}?question="Are any direct clinical benefits claimed for this software?"
+
+
+curl "http://localhost:8000/answer?ID=b39c6db54ac047698b1e78b68f313ed9&question="Are any direct clinical benefits claimed for this software?"&model="qwen3:4b"
+curl "http://localhost:8000/answer?ID=1f613ead681e452e81e63ba8ddde8fd8&question="Are any direct clinical benefits claimed for this software?"&model="gemma3"

@@ -13,3 +13,8 @@ log/*
 logs/
 parts/*
 json_results/*
+
+logs/*
+uploaded_docs/*
+results/*
+.venv/*

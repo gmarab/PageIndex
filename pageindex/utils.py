@@ -17,18 +17,84 @@ import yaml
 from pathlib import Path
 from types import SimpleNamespace as config
 
+from ollama import AsyncClient
+from ollama import chat
+
 CHATGPT_API_KEY = os.getenv("CHATGPT_API_KEY")
+
+# Default concurrency limit for LLM API calls to avoid 429 rate-limit errors
+MAX_CONCURRENT_LLM_CALLS = int(os.getenv("MAX_CONCURRENT_LLM_CALLS", "5"))
+_llm_semaphore = None
+
+def get_llm_semaphore():
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
+    return _llm_semaphore
+
+async def gather_with_limit(coros, return_exceptions=False):
+    """Run coroutines with a concurrency limit to avoid rate-limiting."""
+    sem = get_llm_semaphore()
+    async def limited(coro):
+        async with sem:
+            return await coro
+    return await asyncio.gather(
+        *(limited(c) for c in coros),
+        return_exceptions=return_exceptions
+    )
 
 def count_tokens(text, model=None):
     if not text:
         return 0
-    enc = tiktoken.encoding_for_model(model)
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except (KeyError, ValueError):
+        enc = tiktoken.get_encoding("cl100k_base")
     tokens = enc.encode(text)
     return len(tokens)
 
-def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
+async def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
     max_retries = 10
-    client = openai.OpenAI(api_key=api_key)
+#    client = openai.OpenAI(api_key=api_key)
+    client = AsyncClient(
+                        host='http://localhost:11434',
+    )
+
+    for i in range(max_retries):
+        try:
+            if chat_history:
+                messages = chat_history
+                messages.append({"role": "user", "content": prompt})
+            else:
+                messages = [{"role": "user", "content": prompt}]
+
+            response = await client.chat(
+                model=model,
+                messages=messages,
+                options={"temperature": 0}
+            )
+            if not response.done:
+                return response.message.content, response.done_reason
+            else:
+                return response.message.content, "finished"
+
+        except Exception as e:
+            print('************* Retrying *************')
+            logging.error(f"Error: {e}")
+            if i < max_retries - 1:
+                time.sleep(1)
+            else:
+                logging.error('Max retries reached for prompt: ' + prompt)
+                return "Error"
+
+
+
+async def ChatGPT_API(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
+    max_retries = 10
+    client = AsyncClient(
+                        host='http://localhost:11434',
+    )
+
     for i in range(max_retries):
         try:
             if chat_history:
@@ -37,67 +103,38 @@ def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY, chat_
             else:
                 messages = [{"role": "user", "content": prompt}]
             
-            response = client.chat.completions.create(
+#            response = client.chat.completions.create(
+            response = await client.chat(
                 model=model,
                 messages=messages,
-                temperature=0,
+                options={"temperature": 0},
             )
-            if response.choices[0].finish_reason == "length":
-                return response.choices[0].message.content, "max_output_reached"
-            else:
-                return response.choices[0].message.content, "finished"
+            return response.message.content
 
         except Exception as e:
             print('************* Retrying *************')
             logging.error(f"Error: {e}")
             if i < max_retries - 1:
-                time.sleep(1)  # Wait for 1秒 before retrying
+                time.sleep(1)
             else:
                 logging.error('Max retries reached for prompt: ' + prompt)
                 return "Error"
 
-
-
-def ChatGPT_API(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
-    max_retries = 10
-    client = openai.OpenAI(api_key=api_key)
-    for i in range(max_retries):
-        try:
-            if chat_history:
-                messages = chat_history
-                messages.append({"role": "user", "content": prompt})
-            else:
-                messages = [{"role": "user", "content": prompt}]
-            
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0,
-            )
-   
-            return response.choices[0].message.content
-        except Exception as e:
-            print('************* Retrying *************')
-            logging.error(f"Error: {e}")
-            if i < max_retries - 1:
-                time.sleep(1)  # Wait for 1秒 before retrying
-            else:
-                logging.error('Max retries reached for prompt: ' + prompt)
-                return "Error"
-            
 
 async def ChatGPT_API_async(model, prompt, api_key=CHATGPT_API_KEY):
     max_retries = 10
     messages = [{"role": "user", "content": prompt}]
     for i in range(max_retries):
         try:
-            async with openai.AsyncOpenAI(api_key=api_key) as client:
-                response = await client.chat.completions.create(
+                client = AsyncClient(
+                                   host='http://localhost:11434',
+                )
+                response = await client.chat(
                     model=model,
                     messages=messages,
-                    temperature=0,
+                    options={"temperature": 0},
                 )
-                return response.choices[0].message.content
+                return response.message.content
         except Exception as e:
             print('************* Retrying *************')
             logging.error(f"Error: {e}")
@@ -616,7 +653,7 @@ async def generate_node_summary(node, model=None):
 async def generate_summaries_for_structure(structure, model=None):
     nodes = structure_to_list(structure)
     tasks = [generate_node_summary(node, model=model) for node in nodes]
-    summaries = await asyncio.gather(*tasks)
+    summaries = await gather_with_limit(tasks)
     
     for node, summary in zip(nodes, summaries):
         node['summary'] = summary
