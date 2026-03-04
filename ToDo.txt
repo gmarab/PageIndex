@@ -1,3 +1,5 @@
+- formato di output da gemma3 non
+
 - si può, lanciando unicorn, vedere i log sulla console ?
 - gestite stati di avanzamento sui POST, visto che il tempo di elaborazione può essere lungo
 - misurare il numero di token richiesti per le operazioni

@@ -14,8 +14,9 @@
                 "--pdf_path",
                 "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf",
                 "--model",
-                // "qwen3:4b",
-                "gpt-oss:20b-cloud"
+                // "qwen3:4b"
+                // "gpt-oss:20b-cloud"
+                "gemma3"
             ],
             "justMyCode": false
         },
