@@ -22,9 +22,6 @@ from ollama import AsyncClient
 
 CHATGPT_API_KEY = os.getenv("CHATGPT_API_KEY")
 
-#CHATGPT_API_KEY = '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'     # os.getenv("ANTHROPIC_APIKEY")
-#BASE_URL = 'https://api.anthropic.com/v1/'
-
 # Default concurrency limit for LLM API calls to avoid 429 rate-limit errors
 MAX_CONCURRENT_LLM_CALLS = int(os.getenv("MAX_CONCURRENT_LLM_CALLS", "2"))
 _llm_semaphore = None
