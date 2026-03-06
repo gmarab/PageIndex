@@ -1,5 +1,6 @@
 carica file diretto:
 uv run run_pageindex.py --pdf_path "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf" --model "gpt-oss:20b-cloud"
+uv run run_pageindex.py --pdf_path "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf" --model "gemma3"
 
 
 API:

@@ -1,4 +1,6 @@
-- formato di output da gemma3 non
+- formato di output da qwen3.5 non va ?
+- sostituire "nomic-embed-text-v2-moe" con un parametro da .env
+- modificare /upload per salvare il nome vero del file e non un codice
 
 - si può, lanciando unicorn, vedere i log sulla console ?
 - gestite stati di avanzamento sui POST, visto che il tempo di elaborazione può essere lungo

@@ -9,6 +9,7 @@ from pageindex.utils import (
     ChatGPT_API_async,
     extract_json,
     get_page_tokens,
+    get_tokens_for_page,
     get_text_of_pdf_pages,
 )
 
@@ -53,7 +54,7 @@ def tree_for_prompt(nodes):
     return lightweight
 
 
-async def query_pageindex(index_file, question, pdf_path, model):
+async def query_pageindex(index_file, question, pdf_path, model, embeddings):
     # Step 1: Load index and select relevant nodes via LLM
     with open(index_file, "r") as f:
         index_data = json.load(f)
@@ -86,7 +87,8 @@ Here is the document structure:
 
     # Step 2: Extract text from selected nodes
     flat_nodes = flatten_tree(structure)
-    pdf_pages = get_page_tokens(pdf_path)
+#    pdf_pages = get_page_tokens(pdf_path, model)
+    pdf_pages = await get_tokens_for_page(pdf_path, "nomic-embed-text-v2-moe")
 
     context_parts = []
     sources = []
@@ -174,7 +176,7 @@ async def answer_question(req: AnswerRequest):
 
     # perform reasoning retrieval
     try:
-        answer = await query_pageindex(index_file, question, pdf_path, model)
+        answer = await query_pageindex(index_file, question, pdf_path, model, "nomic-embed-text-v2-moe")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     result = answer

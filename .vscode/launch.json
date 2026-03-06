@@ -12,11 +12,13 @@
             "console": "integratedTerminal",
             "args": [
                 "--pdf_path",
-                "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf",
+//                "/home/g22/documents/DTR08/DTR08-Appendices/DTR08-App3.a-Final Product Description.pdf",
+//                "/home/g22/documents/documento_transformer.pdf",
+                "/home/g22/documents/NovaPulse_Product_Documentation.pdf",
                 "--model",
-                // "qwen3:4b"
-                // "gpt-oss:20b-cloud"
-                "gemma3"
+                // "qwen3.5:2b"
+                "gpt-oss:20b-cloud"
+                // "claude-sonnet-4-6"
             ],
             "justMyCode": false
         },

@@ -109,8 +109,8 @@ async def toc_detector_single_page(content, model=None):
 
     return the following JSON format:
     {{
-        "thinking": <why do you think there is a table of content in the given text>
-        "toc_detected": "<yes or no>",
+        \"thinking\": <why do you think there is a table of content in the given text>
+        \"toc_detected\": \"<yes or no>\",
     }}
 
     Directly return the final JSON structure. Do not output anything else.
@@ -119,7 +119,7 @@ async def toc_detector_single_page(content, model=None):
     response = await ChatGPT_API(model=model, prompt=prompt)
     # print('response', response)
     json_content = extract_json(response)
-    return json_content['toc_detected']
+    return json_content.get('toc_detected', 'no')
 
 
 async def check_if_toc_extraction_is_complete(content, toc, model=None):
@@ -137,7 +137,7 @@ async def check_if_toc_extraction_is_complete(content, toc, model=None):
     prompt = prompt + '\n Document:\n' + content + '\n Table of contents:\n' + toc
     response = await ChatGPT_API(model=model, prompt=prompt)
     json_content = extract_json(response)
-    return json_content['completed']
+    return json_content.get('completed', 'no')
 
 
 async def check_if_toc_transformation_is_complete(content, toc, model=None):
@@ -155,7 +155,7 @@ async def check_if_toc_transformation_is_complete(content, toc, model=None):
     prompt = prompt + '\n Raw Table of contents:\n' + content + '\n Cleaned Table of contents:\n' + toc
     response = await ChatGPT_API(model=model, prompt=prompt)
     json_content = extract_json(response)
-    return json_content['completed']
+    return json_content.get('completed', 'no')
 
 async def extract_toc_content(content, model=None):
     prompt = f"""
@@ -180,7 +180,11 @@ async def extract_toc_content(content, model=None):
     response = response + new_response
     if_complete = await check_if_toc_transformation_is_complete(content, response, model)
 
+    continuation_count = 0
     while not (if_complete == "yes" and finish_reason == "finished"):
+        continuation_count += 1
+        if continuation_count > 3:
+            raise Exception('Failed to complete table of contents after maximum retries')
         chat_history = [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": response},
@@ -189,10 +193,6 @@ async def extract_toc_content(content, model=None):
         new_response, finish_reason = await ChatGPT_API_with_finish_reason(model=model, prompt=prompt, chat_history=chat_history)
         response = response + new_response
         if_complete = await check_if_toc_transformation_is_complete(content, response, model)
-
-        # Optional: Add a maximum retry limit to prevent infinite loops
-        if len(chat_history) > 5:  # Arbitrary limit of 10 attempts
-            raise Exception('Failed to complete table of contents after maximum retries')
 
     return response
 
@@ -214,7 +214,7 @@ async def detect_page_index(toc_content, model=None):
 
     response = await ChatGPT_API(model=model, prompt=prompt)
     json_content = extract_json(response)
-    return json_content['page_index_given_in_toc']
+    return json_content.get('page_index_given_in_toc', 'no')
 
 async def toc_extractor(page_list, toc_page_list, model):
     def transform_dots_to_colon(text):
@@ -239,7 +239,7 @@ async def toc_extractor(page_list, toc_page_list, model):
 
 async def toc_index_extractor(toc, content, model=None):
     print('start toc_index_extractor')
-    toc_extractor_prompt = """
+    tob_extractor_prompt = """
     You are given a table of contents in a json format and several pages of a document, your job is to add the physical_index to the table of contents in the json format.
 
     The provided pages contains tags like <physical_index_X> and <physical_index_X> to indicate the physical location of the page X.
@@ -261,7 +261,7 @@ async def toc_index_extractor(toc, content, model=None):
     Directly return the final JSON structure. Do not output anything else."""
 
     prompt = tob_extractor_prompt + '\nTable of contents:\n' + str(toc) + '\nDocument pages:\n' + content
-    response = ChatGPT_API(model=model, prompt=prompt)
+    response = await ChatGPT_API(model=model, prompt=prompt)
     json_content = extract_json(response)
     return json_content
 
@@ -290,6 +290,12 @@ async def toc_transformer(toc_content, model=None):
 
     prompt = init_prompt + '\n Given table of contents\n:' + toc_content
     last_complete, finish_reason = await ChatGPT_API_with_finish_reason(model=model, prompt=prompt)
+    # If the model finished and returned valid JSON, skip the completeness check
+    if finish_reason == "finished":
+        parsed = extract_json(last_complete)
+        if parsed and 'table_of_contents' in parsed:
+            cleaned_response = convert_page_to_int(parsed['table_of_contents'])
+            return cleaned_response
     if_complete = await check_if_toc_transformation_is_complete(toc_content, last_complete, model)
     if if_complete == "yes" and finish_reason == "finished":
         last_complete = extract_json(last_complete)
@@ -297,7 +303,12 @@ async def toc_transformer(toc_content, model=None):
         return cleaned_response
 
     last_complete = get_json_content(last_complete)
+    max_continuation_retries = 3
+    continuation_count = 0
     while not (if_complete == "yes" and finish_reason == "finished"):
+        continuation_count += 1
+        if continuation_count > max_continuation_retries:
+            raise Exception('Failed to complete TOC transformation after maximum retries')
         position = last_complete.rfind('}')
         if position != -1:
             last_complete = last_complete[:position+2]
@@ -406,6 +417,8 @@ def calculate_page_offset(pairs):
     return most_common
 
 def add_page_offset_to_toc_json(data, offset):
+    if offset is None:
+        offset = 0
     for i in range(len(data)):
         if data[i].get('page') is not None and isinstance(data[i]['page'], int):
             data[i]['physical_index'] = data[i]['page'] + offset
@@ -729,7 +742,7 @@ async def check_toc(page_list, opt=None):
 
 
 ################### fix incorrect toc #########################################################
-def single_toc_item_index_fixer(section_title, content, model="gpt-4o-2024-11-20"):
+async def single_toc_item_index_fixer(section_title, content, model="gpt-4o-2024-11-20"):
     tob_extractor_prompt = """
     You are given a section title and several pages of a document, your job is to find the physical index of the start page of the section in the partial document.
 
@@ -743,9 +756,9 @@ def single_toc_item_index_fixer(section_title, content, model="gpt-4o-2024-11-20
     Directly return the final JSON structure. Do not output anything else."""
 
     prompt = tob_extractor_prompt + '\nSection Title:\n' + str(section_title) + '\nDocument pages:\n' + content
-    response = ChatGPT_API(model=model, prompt=prompt)
+    response = await ChatGPT_API(model=model, prompt=prompt)
     json_content = extract_json(response)
-    return convert_physical_index_to_int(json_content['physical_index'])
+    return convert_physical_index_to_int(json_content.get('physical_index'))
 
 
 
@@ -1066,7 +1079,8 @@ def page_index_main(doc, opt: config):
         raise ValueError("Unsupported input type. Expected a PDF file path or BytesIO object.")
 
     print('Parsing PDF...')
-    page_list = get_page_tokens(doc)
+#    page_list = get_page_tokens(doc, opt.model)
+    page_list = asyncio.run(get_tokens_for_page(doc, "nomic-embed-text-v2-moe"))
 
     logger.info({'total_page_number': len(page_list)})
     logger.info({'total_token': sum([page[1] for page in page_list])})

@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 import time
 import json
-import PyPDF2
+import pypdf
 import copy
 import asyncio
 import pymupdf
@@ -18,12 +18,15 @@ from pathlib import Path
 from types import SimpleNamespace as config
 
 from ollama import AsyncClient
-from ollama import chat
+#from ollama import chat
 
 CHATGPT_API_KEY = os.getenv("CHATGPT_API_KEY")
 
+#CHATGPT_API_KEY = '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'     # os.getenv("ANTHROPIC_APIKEY")
+#BASE_URL = 'https://api.anthropic.com/v1/'
+
 # Default concurrency limit for LLM API calls to avoid 429 rate-limit errors
-MAX_CONCURRENT_LLM_CALLS = int(os.getenv("MAX_CONCURRENT_LLM_CALLS", "5"))
+MAX_CONCURRENT_LLM_CALLS = int(os.getenv("MAX_CONCURRENT_LLM_CALLS", "2"))
 _llm_semaphore = None
 
 def get_llm_semaphore():
@@ -55,10 +58,8 @@ def count_tokens(text, model=None):
 
 async def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
     max_retries = 10
-#    client = openai.OpenAI(api_key=api_key)
-    client = AsyncClient(
-                        host='http://localhost:11434',
-    )
+#    client = openai.OpenAI(api_key=api_key, base_url=BASE_URL)
+    client = AsyncClient(host='http://localhost:11434')
 
     for i in range(max_retries):
         try:
@@ -68,10 +69,20 @@ async def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY,
             else:
                 messages = [{"role": "user", "content": prompt}]
 
+#            response = client.chat.completions.create(
+#                model=model,
+#                messages=messages,
+#                temperature=0,
+#            )
+#            if response.choices[0].finish_reason == "length":
+#                return response.choices[0].message.content, "max_output_reached"
+#            else:
+#                return response.choices[0].message.content, "finished"
+
             response = await client.chat(
                 model=model,
                 messages=messages,
-                options={"temperature": 0}
+                options={"temperature":0}
             )
             if not response.done:
                 return response.message.content, response.done_reason
@@ -85,15 +96,14 @@ async def ChatGPT_API_with_finish_reason(model, prompt, api_key=CHATGPT_API_KEY,
                 time.sleep(1)
             else:
                 logging.error('Max retries reached for prompt: ' + prompt)
-                return "Error"
+                return "Error", "error"
 
 
 
 async def ChatGPT_API(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None):
     max_retries = 10
-    client = AsyncClient(
-                        host='http://localhost:11434',
-    )
+#    client = openai.OpenAI(api_key=api_key, base_url=BASE_URL)
+    client = AsyncClient(host='http://localhost:11434')
 
     for i in range(max_retries):
         try:
@@ -102,12 +112,18 @@ async def ChatGPT_API(model, prompt, api_key=CHATGPT_API_KEY, chat_history=None)
                 messages.append({"role": "user", "content": prompt})
             else:
                 messages = [{"role": "user", "content": prompt}]
-            
+
 #            response = client.chat.completions.create(
+#                model=model,
+#                messages=messages,
+#                temperature=0,
+#            )
+#            return response.choices[0].message.content
+
             response = await client.chat(
                 model=model,
                 messages=messages,
-                options={"temperature": 0},
+                options={"temperature":0}
             )
             return response.message.content
 
@@ -126,14 +142,20 @@ async def ChatGPT_API_async(model, prompt, api_key=CHATGPT_API_KEY):
     messages = [{"role": "user", "content": prompt}]
     for i in range(max_retries):
         try:
-                client = AsyncClient(
-                                   host='http://localhost:11434',
-                )
+#                client = openai.AsyncOpenAI(api_key=api_key, base_url=BASE_URL)
+#                response = await client.chat.completions.create(
+#                    model=model,
+#                    messages=messages,
+#                    temperature=0,
+#                )
+#                return response.choices[0].message.content
+
+                client = AsyncClient(host='http://localhost:11434')
                 response = await client.chat(
                     model=model,
                     messages=messages,
-                    options={"temperature": 0},
-                )
+                    options={"temperature":0}
+               )
                 return response.message.content
         except Exception as e:
             print('************* Retrying *************')
@@ -142,22 +164,22 @@ async def ChatGPT_API_async(model, prompt, api_key=CHATGPT_API_KEY):
                 await asyncio.sleep(1)  # Wait for 1s before retrying
             else:
                 logging.error('Max retries reached for prompt: ' + prompt)
-                return "Error"  
-            
-            
+                return "Error"
+
+
 def get_json_content(response):
     start_idx = response.find("```json")
     if start_idx != -1:
         start_idx += 7
         response = response[start_idx:]
-        
+
     end_idx = response.rfind("```")
     if end_idx != -1:
         response = response[:end_idx]
-    
+
     json_content = response.strip()
     return json_content
-         
+
 
 def extract_json(content):
     try:
@@ -218,7 +240,7 @@ def get_nodes(structure):
         for item in structure:
             nodes.extend(get_nodes(item))
         return nodes
-    
+
 def structure_to_list(structure):
     if isinstance(structure, dict):
         nodes = []
@@ -232,7 +254,7 @@ def structure_to_list(structure):
             nodes.extend(structure_to_list(item))
         return nodes
 
-    
+
 def get_leaf_nodes(structure):
     if isinstance(structure, dict):
         if not structure['nodes']:
@@ -282,8 +304,8 @@ def get_last_node(structure):
 
 
 def extract_text_from_pdf(pdf_path):
-    pdf_reader = PyPDF2.PdfReader(pdf_path)
-    ###return text not list 
+    pdf_reader = pypdf.PdfReader(pdf_path)
+    ###return text not list
     text=""
     for page_num in range(len(pdf_reader.pages)):
         page = pdf_reader.pages[page_num]
@@ -291,13 +313,13 @@ def extract_text_from_pdf(pdf_path):
     return text
 
 def get_pdf_title(pdf_path):
-    pdf_reader = PyPDF2.PdfReader(pdf_path)
+    pdf_reader = pypdf.PdfReader(pdf_path)
     meta = pdf_reader.metadata
     title = meta.title if meta and meta.title else 'Untitled'
     return title
 
 def get_text_of_pages(pdf_path, start_page, end_page, tag=True):
-    pdf_reader = PyPDF2.PdfReader(pdf_path)
+    pdf_reader = pypdf.PdfReader(pdf_path)
     text = ""
     for page_num in range(start_page-1, end_page):
         page = pdf_reader.pages[page_num]
@@ -336,7 +358,7 @@ def get_pdf_name(pdf_path):
     if isinstance(pdf_path, str):
         pdf_name = os.path.basename(pdf_path)
     elif isinstance(pdf_path, BytesIO):
-        pdf_reader = PyPDF2.PdfReader(pdf_path)
+        pdf_reader = pypdf.PdfReader(pdf_path)
         meta = pdf_reader.metadata
         pdf_name = meta.title if meta and meta.title else 'Untitled'
         pdf_name = sanitize_filename(pdf_name)
@@ -347,7 +369,7 @@ class JsonLogger:
     def __init__(self, file_path):
         # Extract PDF name for logger name
         pdf_name = get_pdf_name(file_path)
-            
+
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.filename = f"{pdf_name}_{current_time}.json"
         os.makedirs("./logs", exist_ok=True)
@@ -360,7 +382,7 @@ class JsonLogger:
         else:
             self.log_data.append({'message': message})
         # Add new message to the log data
-        
+
         # Write entire log data to file
         with open(self._filepath(), "w") as f:
             json.dump(self.log_data, f, indent=2)
@@ -380,7 +402,7 @@ class JsonLogger:
 
     def _filepath(self):
         return os.path.join("logs", self.filename)
-    
+
 
 
 
@@ -391,11 +413,11 @@ def list_to_tree(data):
             return None
         parts = str(structure).split('.')
         return '.'.join(parts[:-1]) if len(parts) > 1 else None
-    
+
     # First pass: Create nodes and track parent-child relationships
     nodes = {}
     root_nodes = []
-    
+
     for item in data:
         structure = item.get('structure')
         node = {
@@ -404,12 +426,12 @@ def list_to_tree(data):
             'end_index': item.get('end_index'),
             'nodes': []
         }
-        
+
         nodes[structure] = node
-        
+
         # Find parent
         parent_structure = get_parent_structure(structure)
-        
+
         if parent_structure:
             # Add as child to parent if parent exists
             if parent_structure in nodes:
@@ -419,7 +441,7 @@ def list_to_tree(data):
         else:
             # No parent, this is a root node
             root_nodes.append(node)
-    
+
     # Helper function to clean empty children arrays
     def clean_node(node):
         if not node['nodes']:
@@ -428,7 +450,7 @@ def list_to_tree(data):
             for child in node['nodes']:
                 clean_node(child)
         return node
-    
+
     # Clean and return the tree
     return [clean_node(node) for node in root_nodes]
 
@@ -447,10 +469,10 @@ def add_preface_if_needed(data):
 
 
 
-def get_page_tokens(pdf_path, model="gpt-4o-2024-11-20", pdf_parser="PyPDF2"):
+def get_page_tokens(pdf_path, model, pdf_parser="pypdf"):
     enc = tiktoken.encoding_for_model(model)
-    if pdf_parser == "PyPDF2":
-        pdf_reader = PyPDF2.PdfReader(pdf_path)
+    if pdf_parser == "pypdf":
+        pdf_reader = pypdf.PdfReader(pdf_path)
         page_list = []
         for page_num in range(len(pdf_reader.pages)):
             page = pdf_reader.pages[page_num]
@@ -473,7 +495,34 @@ def get_page_tokens(pdf_path, model="gpt-4o-2024-11-20", pdf_parser="PyPDF2"):
     else:
         raise ValueError(f"Unsupported PDF parser: {pdf_parser}")
 
-        
+
+async def get_tokens_for_page(pdf_path, model="nomic-embed-text", pdf_parser="pypdf"):
+    if pdf_parser == "pypdf":
+        pdf_reader = pypdf.PdfReader(pdf_path)
+        page_list = []
+        for page_num in range(len(pdf_reader.pages)):
+            page = pdf_reader.pages[page_num]
+            page_text = page.extract_text()
+            response = await AsyncClient().embed(model=model, input=page_text)
+            token_length = len(response.embeddings[0])
+            page_list.append((page_text, token_length))
+        return page_list
+    elif pdf_parser == "PyMuPDF":
+        if isinstance(pdf_path, BytesIO):
+            pdf_stream = pdf_path
+            doc = pymupdf.open(stream=pdf_stream, filetype="pdf")
+        elif isinstance(pdf_path, str) and os.path.isfile(pdf_path) and pdf_path.lower().endswith(".pdf"):
+            doc = pymupdf.open(pdf_path)
+        page_list = []
+        for page in doc:
+            page_text = page.get_text()
+            response = await AsyncClient().embed(model=model, input=page_text)
+            token_length = len(response.embeddings[0])
+            page_list.append((page_text, token_length))
+        return page_list
+    else:
+        raise ValueError(f"Unsupported PDF parser: {pdf_parser}")
+
 
 def get_text_of_pdf_pages(pdf_pages, start_page, end_page):
     text = ""
@@ -488,7 +537,7 @@ def get_text_of_pdf_pages_with_labels(pdf_pages, start_page, end_page):
     return text
 
 def get_number_of_pages(pdf_path):
-    pdf_reader = PyPDF2.PdfReader(pdf_path)
+    pdf_reader = pypdf.PdfReader(pdf_path)
     num = len(pdf_reader.pages)
     return num
 
@@ -509,7 +558,7 @@ def post_processing(structure, end_physical_index):
     if len(tree)!=0:
         return tree
     else:
-        ### remove appear_start 
+        ### remove appear_start
         for node in structure:
             node.pop('appear_start', None)
             node.pop('physical_index', None)
@@ -551,7 +600,7 @@ def print_json(data, max_len=40, indent=2):
             return obj[:max_len] + '...'
         else:
             return obj
-    
+
     simplified = simplify_data(data)
     print(json.dumps(simplified, indent=indent, ensure_ascii=False))
 
@@ -643,7 +692,7 @@ async def generate_node_summary(node, model=None):
     prompt = f"""You are given a part of a document, your task is to generate a description of the partial document about what are main points covered in the partial document.
 
     Partial Document Text: {node['text']}
-    
+
     Directly return the description, do not include any other text.
     """
     response = await ChatGPT_API_async(model, prompt)
@@ -654,7 +703,7 @@ async def generate_summaries_for_structure(structure, model=None):
     nodes = structure_to_list(structure)
     tasks = [generate_node_summary(node, model=model) for node in nodes]
     summaries = await gather_with_limit(tasks)
-    
+
     for node, summary in zip(nodes, summaries):
         node['summary'] = summary
     return structure
@@ -671,11 +720,11 @@ def create_clean_structure_for_description(structure):
         for key in ['title', 'node_id', 'summary', 'prefix_summary']:
             if key in structure:
                 clean_node[key] = structure[key]
-        
+
         # Recursively process child nodes
         if 'nodes' in structure and structure['nodes']:
             clean_node['nodes'] = create_clean_structure_for_description(structure['nodes'])
-        
+
         return clean_node
     elif isinstance(structure, list):
         return [create_clean_structure_for_description(item) for item in structure]
@@ -686,9 +735,9 @@ def create_clean_structure_for_description(structure):
 def generate_doc_description(structure, model=None):
     prompt = f"""Your are an expert in generating descriptions for a document.
     You are given a structure of a document. Your task is to generate a one-sentence description for the document, which makes it easy to distinguish the document from other documents.
-        
+
     Document Structure: {structure}
-    
+
     Directly return the description, do not include any other text.
     """
     response = ChatGPT_API(model, prompt)
