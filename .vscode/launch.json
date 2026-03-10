@@ -17,7 +17,8 @@
                 "/home/g22/documents/NovaPulse_Product_Documentation.pdf",
                 "--model",
                 // "qwen3.5:2b"
-                "gpt-oss:20b-cloud"
+                "gpt-oss:120b-cloud"
+                // "gpt-oss:20b-cloud"
                 // "claude-sonnet-4-6"
             ],
             "justMyCode": false
