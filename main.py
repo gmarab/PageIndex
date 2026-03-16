@@ -87,8 +87,8 @@ Here is the document structure:
 
     # Step 2: Extract text from selected nodes
     flat_nodes = flatten_tree(structure)
-#    pdf_pages = get_page_tokens(pdf_path, model)
-    pdf_pages = await get_tokens_for_page(pdf_path, "nomic-embed-text-v2-moe")
+    pdf_pages = get_page_tokens(pdf_path, model)
+#    pdf_pages = await get_tokens_for_page(pdf_path, "nomic-embed-text-v2-moe")
 
     context_parts = []
     sources = []

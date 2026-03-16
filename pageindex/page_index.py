@@ -1079,8 +1079,8 @@ def page_index_main(doc, opt: config):
         raise ValueError("Unsupported input type. Expected a PDF file path or BytesIO object.")
 
     print('Parsing PDF...')
-#    page_list = get_page_tokens(doc, opt.model)
-    page_list = asyncio.run(get_tokens_for_page(doc, "nomic-embed-text-v2-moe"))
+    page_list = get_page_tokens(doc, opt.model)
+#    page_list = asyncio.run(get_tokens_for_page(doc, "nomic-embed-text-v2-moe"))
 
     logger.info({'total_page_number': len(page_list)})
     logger.info({'total_token': sum([page[1] for page in page_list])})
