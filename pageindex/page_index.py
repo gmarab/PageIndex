@@ -180,11 +180,14 @@ async def extract_toc_content(content, model=None):
     response = response + new_response
     if_complete = await check_if_toc_transformation_is_complete(content, response, model)
 
-    continuation_count = 0
+    attempt = 0
+    max_attempts = 5
+
     while not (if_complete == "yes" and finish_reason == "finished"):
-        continuation_count += 1
-        if continuation_count > 3:
+        attempt += 1
+        if attempt > max_attempts:
             raise Exception('Failed to complete table of contents after maximum retries')
+
         chat_history = [
             {"role": "user", "content": prompt},
             {"role": "assistant", "content": response},
@@ -817,9 +820,9 @@ async def fix_incorrect_toc(toc_with_page_number, page_list, incorrect_results, 
         page_contents=[]
         for page_index in range(prev_correct, next_correct+1):
             # Add bounds checking to prevent IndexError
-            list_index = page_index - start_index
-            if list_index >= 0 and list_index < len(page_list):
-                page_text = f"<physical_index_{page_index}>\n{page_list[list_index][0]}\n<physical_index_{page_index}>\n\n"
+            page_list_idx = page_index - start_index
+            if page_list_idx >= 0 and page_list_idx < len(page_list):
+                page_text = f"<physical_index_{page_index}>\n{page_list[page_list_idx][0]}\n<physical_index_{page_index}>\n\n"
                 page_contents.append(page_text)
             else:
                 continue
