@@ -1,9 +1,11 @@
 from fastapi import FastAPI, UploadFile, HTTPException
 from pydantic import BaseModel
+from typing import List, Optional
 import subprocess
 import uuid
 import os
 import json
+import time
 
 from pageindex.utils import (
     ChatGPT_API_async,
@@ -22,9 +24,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 DEFAULT_MODEL = "gpt-oss:20b-cloud"
 
 
+class OpenAIMessage(BaseModel):
+    role: str
+    content: str
+
 class AnswerRequest(BaseModel):
     name: str
-    question: str
+    messages: List[OpenAIMessage]
     model: str = DEFAULT_MODEL
 
 class ProcessRequest(BaseModel):
@@ -158,17 +164,20 @@ async def process(req: ProcessRequest):
 
     return {"id": file_id, "status": "indexed"}
 
-@app.post("/answer")
+@app.post("/v1/chat/completions")
 async def answer_question(req: AnswerRequest):
     name = req.name
-    question = req.question
     model = req.model
-    # load index
-#    index_file = f"indexes/{ID}.json"
 
-    # derive pdf_path
-    if name.find("/") != -1 :
-        pdf_path = name  # .rsplit('.', 1)[0]
+    # Extract question from the last user message
+    user_messages = [m for m in req.messages if m.role == "user"]
+    if not user_messages:
+        raise HTTPException(status_code=400, detail="No user message found in messages array.")
+    question = user_messages[-1].content
+
+    # derive pdf_path and index_file
+    if name.find("/") != -1:
+        pdf_path = name
         index_file = f"results/{name.rsplit('.', 1)[0].rsplit('/', 1)[-1]}_structure.json"
     else:
         pdf_path = os.path.join(UPLOAD_DIR, f"{name}")
@@ -176,8 +185,29 @@ async def answer_question(req: AnswerRequest):
 
     # perform reasoning retrieval
     try:
-        answer = await query_pageindex(index_file, question, pdf_path, model, "nomic-embed-text-v2-moe")
+        result = await query_pageindex(index_file, question, pdf_path, model, "nomic-embed-text-v2-moe")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    result = answer
-    return {"question": question, "answer": result["answer"], "sources": result["sources"]}
+
+    # Build OpenAI-compatible response
+    answer_text = result["answer"]
+    sources_json = json.dumps(result["sources"], ensure_ascii=False)
+    full_content = f"{answer_text}\n\n<!-- sources: {sources_json} -->"
+
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": answer_text,
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "sources": result["sources"],
+    }
