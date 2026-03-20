@@ -6,6 +6,7 @@ import uuid
 import os
 import json
 import time
+import re
 
 from pageindex.utils import (
     ChatGPT_API_async,
@@ -32,6 +33,7 @@ class AnswerRequest(BaseModel):
     name: str
     messages: List[OpenAIMessage]
     model: str = DEFAULT_MODEL
+    strip_markdown: bool = True
 
 class ProcessRequest(BaseModel):
     path: str
@@ -129,6 +131,13 @@ Answer:"""
     return {"answer": answer, "sources": sources}
 
 
+def strip_markdown(text):
+    """Rimuove la formattazione markdown bold/italic dal testo."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    return text
+
+
 @app.post("/upload")
 async def upload_document(file: UploadFile):
     # Save uploaded file
@@ -191,6 +200,9 @@ async def answer_question(req: AnswerRequest):
 
     # Build OpenAI-compatible response
     answer_text = result["answer"]
+    if req.strip_markdown:
+        answer_text = strip_markdown(answer_text)
+
     sources_json = json.dumps(result["sources"], ensure_ascii=False)
     full_content = f"{answer_text}\n\n<!-- sources: {sources_json} -->"
 
